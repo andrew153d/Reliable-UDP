@@ -13,6 +13,12 @@ namespace RUDP
 {
     public class RUDP
     {
+        const int PAYLOADSIZE = 1100;
+        const int MAX_QUEUE_SIZE = 10;
+        const int MAX_SEND_RETRIES = 20;
+        const int PACKET_RESEND_TIMEOUT = 500;
+        const int PING_PERIIOD = 1000;
+
         private short local_port;
         private IPAddress local_addr;
         private UdpClient client;
@@ -21,11 +27,9 @@ namespace RUDP
         private int incoming_data_index = 0;
         private int next_outgoing_data_index = 0;
 
+        private long last_ping_receive_time;
+        private long last_ping_send_time;
 
-        const int PAYLOADSIZE = 1100;
-        const int MAX_QUEUE_SIZE = 10;
-        const int MAX_SEND_RETRIES = 20;
-        const int PACKET_RESEND_TIMEOUT = 500;
 
         IPEndPoint remote_ep;
 
@@ -71,7 +75,8 @@ namespace RUDP
             ACK,
             DATA,
             FIN,
-            RAW_UDP
+            RAW_UDP,
+            PING
         }
 
         public enum SessionState
@@ -221,6 +226,7 @@ namespace RUDP
                 }
 
                 Console.WriteLine($"Receive: {receivedPacket.header.type}:{receivedPacket.header.num}");
+                last_ping_receive_time = millis();
                 switch (receivedPacket.header.type)
                 {
                     case MessageType.SYN:
@@ -305,6 +311,11 @@ namespace RUDP
                             //pop the message from the message frame here
                             break;
                         }
+                    case MessageType.PING:
+                        {
+                            last_ping_receive_time = millis();
+                            break;
+                        }
                 }
             }
             catch (Exception ex)
@@ -316,6 +327,28 @@ namespace RUDP
 
         private void Sender()
         {
+            
+            if (millis() - last_ping_send_time > PING_PERIIOD && GetState()==SessionState.OPEN)
+            {
+                last_ping_send_time = millis();
+                Console.WriteLine($"Sending: PING");
+                DataPacket packet = new DataPacket(0);
+                packet.header.PayloadSize = 0;
+                packet.header.num = 0;
+                packet.header.type = MessageType.PING;
+                packet.header.checksum = CalculateChecksum(packet.Data);
+                ReadOnlyMemory<byte> serializedData = SerializeToSpan(packet);
+                client.Send(serializedData.ToArray(), serializedData.Length, remote_ep);
+            }
+
+            if (millis() - last_ping_receive_time > PING_PERIIOD*3 && GetState() == SessionState.OPEN)
+            {
+                last_ping_send_time = millis();
+                Console.WriteLine("Lost Comms");
+                Close();
+                return;
+            }
+
             if (packets.Count == 0)
                 return;
             
