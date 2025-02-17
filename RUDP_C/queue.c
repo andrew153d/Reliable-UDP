@@ -38,7 +38,7 @@ void* queue_peek(struct Queue *q)
 {
   if(queue_size(q) == 0)
   {
-    return -1;
+    return NULL;
   }
   return q->items[q->read_index];
 }

@@ -5,22 +5,21 @@
 #include <arpa/inet.h>
 #include <stdbool.h>
 #include <sys/time.h>
+#include <time.h>
 #include "queue.h"
 #include "rudp.h"
 
 #define PAYLOADSIZE 1100
 #define MAX_QUEUE_SIZE 10
-#define MAX_SEND_RETRIES 5
+#define MAX_SEND_RETRIES 10
 #define PACKET_RESEND_TIMEOUT 500
 #define PING_PERIOD 1000
 #define ENABLE_PING 0
 
-// utils
-uint16_t CalculateChecksum(uint8_t *bytes, int byte_len);
+uint16_t calculate_checksum(uint8_t *bytes, int byte_len);
 long millis();
 
-// Global variable to store the start time
-struct timeval start_time;
+
 
 typedef enum
 {
@@ -54,16 +53,17 @@ struct MessageFrame
     long last_time_sent;
 };
 
-void SendPacket(struct DataPacket *packet, struct sockaddr_in ep);
-void ReceiveHandler();
-void Sender();
-void SendAck(struct DataPacket out_packet);
+void send_packet(struct DataPacket *packet);
+void receive_packets();
+void send_packets();
+void send_ack(struct DataPacket out_packet);
+
 /* Variables */
 uint16_t local_port;
 char *local_ip;
-struct sockaddr_in local_addr;
+struct sockaddr_in local_endpoint;
+struct sockaddr_in remote_endpoint;
 int udp_socket;
-struct sockaddr_in remote_addr;
 
 bool incoming_num_initialized = false;
 uint32_t incoming_data_index = 0;
@@ -72,15 +72,15 @@ uint32_t next_outgoing_index = 0;
 uint32_t last_ping_receive_time;
 uint32_t last_ping_send_time;
 
+struct timeval start_time;
+
 SessionState sessionState;
-int (*OnBytesReceived)(uint8_t *, int) = NULL;
+void (*OnBytesReceived)(uint8_t *, int) = NULL;
 
 struct Queue packets;
 
-/* End Variables */
-void RUDP(const char *ip, int port)
+void rudp_init(const char *ip, int port)
 {
-    // Initialize the start time
     gettimeofday(&start_time, NULL);
 
     local_ip = (char *)malloc(strlen(ip) + 1);
@@ -97,18 +97,18 @@ void RUDP(const char *ip, int port)
         exit(EXIT_FAILURE);
     }
 
-    memset(&local_addr, 0, sizeof(local_addr));
-    local_addr.sin_family = AF_INET;
-    local_addr.sin_port = htons(local_port);
+    memset(&local_endpoint, 0, sizeof(local_endpoint));
+    local_endpoint.sin_family = AF_INET;
+    local_endpoint.sin_port = htons(local_port);
 
-    if (inet_pton(AF_INET, local_ip, &local_addr.sin_addr) <= 0)
+    if (inet_pton(AF_INET, local_ip, &local_endpoint.sin_addr) <= 0)
     {
         perror("Invalid IP address");
         close(udp_socket);
         exit(EXIT_FAILURE);
     }
 
-    if (bind(udp_socket, (struct sockaddr *)&local_addr, sizeof(local_addr)) < 0)
+    if (bind(udp_socket, (struct sockaddr *)&local_endpoint, sizeof(local_endpoint)) < 0)
     {
         perror("Bind failed");
         close(udp_socket);
@@ -117,29 +117,29 @@ void RUDP(const char *ip, int port)
 
     printf("Listening on %s:%d for UDP packets...\n", local_ip, local_port);
     sessionState = CLOSED;
+
     srand(time(NULL));
     next_outgoing_index = abs(rand() % 1000);
-    printf("Next outgoing index: %d\n", next_outgoing_index);
 }
 
-SessionState GetState()
+SessionState rudp_get_state()
 {
     return sessionState;
 }
 
-void Connect(char *remote_ip, uint16_t remote_port)
+void rudp_connect(char *remote_ip, uint16_t remote_port)
 {
-    if (GetState() != CLOSED)
+    if (rudp_get_state() != CLOSED)
     {
         printf("Connection already established\n");
         return;
     }
 
     printf("Connecting to %s:%d\n", remote_ip, remote_port);
-    memset(&remote_addr, 0, sizeof(remote_addr));
-    remote_addr.sin_family = AF_INET;
-    remote_addr.sin_port = htons(remote_port);
-    inet_pton(AF_INET, remote_ip, &remote_addr.sin_addr);
+    memset(&remote_endpoint, 0, sizeof(remote_endpoint));
+    remote_endpoint.sin_family = AF_INET;
+    remote_endpoint.sin_port = htons(remote_port);
+    inet_pton(AF_INET, remote_ip, &remote_endpoint.sin_addr);
     sessionState = OPENING;
 
     struct DataPacket packet;
@@ -147,7 +147,7 @@ void Connect(char *remote_ip, uint16_t remote_port)
     packet.header.num = next_outgoing_index;
     packet.header.PayloadSize = 0;
     printf("Sending: %d:%d\n", packet.header.type, packet.header.num);
-    SendPacket(&packet, remote_addr);
+    send_packet(&packet);
 }
 
 /**
@@ -159,7 +159,7 @@ void Connect(char *remote_ip, uint16_t remote_port)
  * @param [param2] [Description of the second parameter]
  * @return [Description of the return value]
  */
-int Send(uint8_t *bytes, int byte_len)
+int rudp_send(uint8_t *bytes, int byte_len)
 {
     if (byte_len > PAYLOADSIZE)
     {
@@ -167,9 +167,9 @@ int Send(uint8_t *bytes, int byte_len)
         return -1;
     }
 
-    if (queue_size(&packets) >= MAX_QUEUE_SIZE)
+    if (queue_size(&packets) >= MAX_QUEUE_SIZE-1)
     {
-        printf("Queue is full\n");
+        //printf("Queue is full\n");
         return -1;
     }
 
@@ -193,40 +193,45 @@ int Send(uint8_t *bytes, int byte_len)
     {
         p.header.num = next_outgoing_index;
     }
-    p.header.checksum = CalculateChecksum(p.Data, byte_len);
-
-    SendPacket(&p, remote_addr);
+    p.header.checksum = calculate_checksum(p.Data, byte_len);
+    send_packet(&p);
+    return 1;
 }
 
-void SendPacket(struct DataPacket *packet, struct sockaddr_in ep)
+void send_packet(struct DataPacket *packet)
 {
     struct MessageFrame *f = (struct MessageFrame *)malloc(sizeof(struct MessageFrame));
     f->packet = *packet;
     f->times_sent = 0;
     f->last_time_sent = 0;
-    f->ep = remote_addr;
+    f->ep = remote_endpoint;
     queue_write(&packets, f);
 }
 
-void SendAck(struct DataPacket out_packet)
+void send_ack(struct DataPacket out_packet)
 {
-    printf("Sending ACK for %d\n", out_packet.header.num);
-    out_packet.header.checksum = CalculateChecksum(out_packet.Data, out_packet.header.PayloadSize);
-    sendto(udp_socket, &out_packet, sizeof(struct PacketHeader) + out_packet.header.PayloadSize, 0, (struct sockaddr *)&remote_addr, sizeof(remote_addr));
+    out_packet.header.checksum = calculate_checksum(out_packet.Data, out_packet.header.PayloadSize);
+    printf("Sending: %d:%d\n", out_packet.header.type, out_packet.header.num);
+    sendto(udp_socket, &out_packet, sizeof(struct PacketHeader) + out_packet.header.PayloadSize, 0, (struct sockaddr *)&remote_endpoint, sizeof(remote_endpoint));
 }
 
-void Run()
+void set_recv_callback(void (*callback)(unsigned char *, int))
 {
-    Sender();
-    ReceiveHandler();
+    OnBytesReceived = callback;
 }
 
-void Close()
+void rudp_run()
+{
+    send_packets();
+    receive_packets();
+}
+
+void rudp_close()
 {
     close(udp_socket);
 }
 
-void ReceiveHandler()
+void receive_packets()
 {
     char buffer[PAYLOADSIZE];
     struct sockaddr_in sender_addr;
@@ -238,6 +243,14 @@ void ReceiveHandler()
     }
 
     struct DataPacket *receivedPacket = (struct DataPacket *)&buffer[0];
+
+    uint16_t receivedChecksum = calculate_checksum(receivedPacket->Data, receivedPacket->header.PayloadSize);
+    if (receivedChecksum != receivedPacket->header.checksum)
+    {
+        printf("Checksum mismatch: %d | %d\n", receivedChecksum, receivedPacket->header.checksum);
+        //return;
+    }
+
     printf("Received: %d:%d\n", receivedPacket->header.type, receivedPacket->header.num);
     last_ping_receive_time = millis();
     switch (receivedPacket->header.type)
@@ -249,7 +262,7 @@ void ReceiveHandler()
             // return;
         }
 
-        remote_addr = sender_addr;
+        remote_endpoint = sender_addr;
         sessionState = OPEN;
         incoming_data_index = receivedPacket->header.num;
 
@@ -258,7 +271,7 @@ void ReceiveHandler()
         out_packet.header.type = ACK;
         out_packet.header.num = incoming_data_index + 1;
         out_packet.header.PayloadSize = 0;
-        SendAck(out_packet);
+        send_ack(out_packet);
         break;
     }
 
@@ -276,8 +289,8 @@ void ReceiveHandler()
         }
         if(incoming_data_index + 2 != receivedPacket->header.num)
         {
-            printf("Mismatch indexes\n");
-            return;
+            //printf("Mismatch indexes\n");
+            //return;
         }
         else
         {
@@ -290,7 +303,7 @@ void ReceiveHandler()
         struct DataPacket out_packet;
         out_packet.header.type = ACK;
         out_packet.header.num = receivedPacket->header.num + 1;
-        SendAck(out_packet);
+        send_ack(out_packet);
         break;
     }
 
@@ -319,31 +332,37 @@ void ReceiveHandler()
         }
         break;
     }
+    case FIN:
+    break;
+    case RAW_UDP:
+    break;
+    case PING:
+    break;
     }
 }
 
-void Sender()
+void send_packets()
 {
     if (ENABLE_PING)
     {
-        if (millis() - last_ping_send_time > PING_PERIOD && GetState() == OPEN)
+        if (millis() - last_ping_send_time > PING_PERIOD && rudp_get_state() == OPEN)
         {
             last_ping_send_time = millis();
             struct DataPacket packet;
             packet.header.PayloadSize = 0;
             packet.header.num = 0;
             packet.header.type = PING;
-            packet.header.checksum = CalculateChecksum(packet.Data, packet.header.PayloadSize);
+            packet.header.checksum = calculate_checksum(packet.Data, packet.header.PayloadSize);
             printf("Sending: %d:%d\n", packet.header.type, packet.header.num);
-            sendto(udp_socket, &packet, sizeof(struct PacketHeader) + packet.header.PayloadSize, 0, (struct sockaddr *)&remote_addr, sizeof(remote_addr));
+            sendto(udp_socket, &packet, sizeof(struct PacketHeader) + packet.header.PayloadSize, 0, (struct sockaddr *)&remote_endpoint, sizeof(remote_endpoint));
         }
 
-        if (millis() - last_ping_receive_time > PING_PERIOD * 3 && GetState() == OPEN)
+        if (millis() - last_ping_receive_time > PING_PERIOD * 3 && rudp_get_state() == OPEN)
         {
             last_ping_send_time = millis();
             printf("Lost comms");
             sessionState = CLOSED;
-            Close();
+            rudp_close();
             return;
         }
     }
@@ -374,7 +393,7 @@ void Sender()
     }
 }
 
-uint16_t CalculateChecksum(uint8_t *bytes, int byte_len)
+uint16_t calculate_checksum(uint8_t *bytes, int byte_len)
 {
     if (bytes == NULL)
         return 0;

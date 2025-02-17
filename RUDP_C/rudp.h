@@ -9,10 +9,10 @@ typedef enum
     CLOSED
 } SessionState;
 
-void RUDP(const char *ip, int port);
-void Connect(char *remote_ip, uint16_t remote_port);
-int Send(uint8_t* bytes, int byte_len);
-SessionState GetState();
-
-void Run();
-void Close();
+void rudp_init(const char *ip, int port);
+void rudp_connect(char *remote_ip, uint16_t remote_port);
+int rudp_send(uint8_t* bytes, int byte_len);
+SessionState rudp_get_state();
+void set_recv_callback(void (*callback)(unsigned char *, int));
+void rudp_run();
+void rudp_close();

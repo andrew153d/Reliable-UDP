@@ -13,10 +13,6 @@ void HandleReceivedBytes(const unsigned char *bytes, size_t length) {
 int main() {
     printf("Starting the Client\n");
 
-    // Adjust these values based on needs
-    int send_size = 1099;   // Size of each packet to send
-
-    // Read the firmware file into a byte array
     const char *filePath = "firmware.txt";
     FILE *file = fopen(filePath, "rb");
     if (!file) {
@@ -40,29 +36,33 @@ int main() {
 
     int send_index = 0;
 
-    RUDP("127.0.0.1", 15680);
-    Connect("127.0.0.1", 15671);
-    while (GetState() != OPEN) {
-        Run();
+    rudp_init("127.0.0.1", 15680);
+    rudp_connect("127.0.0.1", 15671);
+    while (rudp_get_state() != OPEN) {
+        rudp_run();
     }
-    while (GetState() != CLOSED) {
-        Run();
+    
+    int send_size = 1000;
+
+    while (rudp_get_state() != CLOSED) {
+        rudp_run();
 
         // Send the data in chunks of 'send_size', adjusting to ensure you send the remaining data
         int remainingData = fileSize - send_index;
         int currentSendSize = remainingData < send_size ? remainingData : send_size;
 
-        if (Send(data + send_index, currentSendSize) != -1) {
+        if (rudp_send(data + send_index, currentSendSize) != -1) {
             send_index += currentSendSize;
             printf("Sent %d of %ld bytes | %.2f%%\n", send_index, fileSize, ((float)send_index / (float)fileSize) * 100);
-            // If all data is sent, exit the loop
             if (send_index == fileSize) {
                 break;
             }
         }
     }
-    while (GetState() != CLOSED) {
+    while (rudp_get_state() != CLOSED) {
+        rudp_run();
     }
+
     free(data);
     return 0;
 }
