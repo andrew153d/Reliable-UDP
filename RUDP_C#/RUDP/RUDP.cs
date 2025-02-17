@@ -22,16 +22,17 @@ namespace RUDP
         private short local_port;
         private IPAddress local_addr;
         private UdpClient client;
-
+        IPEndPoint remote_ep;
+        
         private bool incoming_num_initialized = false;
-        private int incoming_data_index = 0;
+        private uint incoming_data_index = 0;
         private int next_outgoing_data_index = 0;
 
         private long last_ping_receive_time;
         private long last_ping_send_time;
 
-
-        IPEndPoint remote_ep;
+        private SessionState sessionState;
+        
 
         public event Action<byte[]> OnBytesReceived;
         //public event Action<byte[]> OnError;
@@ -63,7 +64,6 @@ namespace RUDP
         public unsafe struct MessageFrame
         {
             public DataPacket packet;
-            public bool acked;
             public EndPoint ep;
             public byte times_sent;
             public long last_time_sent;
@@ -87,7 +87,6 @@ namespace RUDP
             CLOSED
         }
 
-        private SessionState sessionState;
 
         public RUDP(IPAddress addr, short port)
         {
@@ -97,7 +96,6 @@ namespace RUDP
             Console.WriteLine($"{addr}:{local_port}");
             sessionState = SessionState.CLOSED;
             next_outgoing_data_index = new Random().Next(1, 1000);
-            //incoming_data_index = new Random().Next(1, 1000);
         }
 
         public SessionState GetState()
@@ -123,16 +121,16 @@ namespace RUDP
                 }
             };
 
-            Send(packet, new IPEndPoint(remote_addr, remote_port));
+            SendPacket(packet, new IPEndPoint(remote_addr, remote_port));
 
             return true;
         }
-        public int Send(byte[] bytes, int offset,int byte_len)
-        {
-            byte[] toSend = new byte[byte_len];
-            Array.Copy(bytes, offset, toSend, 0, byte_len);
-            return Send(toSend,byte_len);
-        }
+        // public int Send(byte[] bytes, int offset, int byte_len)
+        // {
+        //     byte[] toSend = new byte[byte_len];
+        //     Array.Copy(bytes, offset, toSend, 0, byte_len);
+        //     return Send(toSend,byte_len);
+        // }
         public int Send(byte[] bytes, int byte_len)
         {
             if(byte_len > PAYLOADSIZE)
@@ -166,14 +164,13 @@ namespace RUDP
             packets.AddLast(new MessageFrame
             {
                 packet = p,
-                acked = false,
                 last_time_sent = 0,
                 ep = remote_ep,
             });
             return 0;
         }
 
-        private void Send(DataPacket out_packet, IPEndPoint ep_)
+        private void SendPacket(DataPacket out_packet, IPEndPoint ep_)
         {
             packets.AddLast(new MessageFrame
             {
