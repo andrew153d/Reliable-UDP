@@ -13,21 +13,25 @@ void HandleReceivedBytes(unsigned char* bytes, int length) {
   }
 }
 
+struct rudp_session *session;
+
 int main() {
     FILE *file = fopen("firmware1.txt", "w");
     if (file != NULL) {
         fclose(file);
     }
 
-    rudp_init("127.0.0.1", 15671);
-    set_recv_callback(HandleReceivedBytes);
-    while(rudp_get_state()!=OPEN)
+    session = (struct rudp_session*)malloc(sizeof(struct rudp_session));
+
+    rudp_init(session, "127.0.0.1", 15671);
+    set_recv_callback(session, HandleReceivedBytes);
+    while(rudp_get_state(session)!=OPEN)
     {
-      rudp_run();
+      rudp_run(session);
     }
-    while(rudp_get_state()!=CLOSED)
+    while(rudp_get_state(session)!=CLOSED)
     {
-      rudp_run();
+      rudp_run(session);
     }
     return 0;
 }

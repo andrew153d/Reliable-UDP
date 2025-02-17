@@ -10,6 +10,8 @@ void HandleReceivedBytes(const unsigned char *bytes, size_t length) {
     printf("\n");
 }
 
+struct rudp_session* session;
+
 int main() {
     printf("Starting the Client\n");
 
@@ -36,22 +38,23 @@ int main() {
 
     int send_index = 0;
 
-    rudp_init("127.0.0.1", 15680);
-    rudp_connect("127.0.0.1", 15671);
-    while (rudp_get_state() != OPEN) {
-        rudp_run();
+    session = (struct rudp_session*)malloc(sizeof(struct rudp_session));
+
+    rudp_init(session, "127.0.0.1", 15680);
+    rudp_connect(session, "127.0.0.1", 15671);
+    while (session->sessionState != OPEN) {
+        rudp_run(session);
     }
-    
     int send_size = 1000;
 
-    while (rudp_get_state() != CLOSED) {
-        rudp_run();
+    while (rudp_get_state(session) != CLOSED) {
+        rudp_run(session);
 
         // Send the data in chunks of 'send_size', adjusting to ensure you send the remaining data
         int remainingData = fileSize - send_index;
         int currentSendSize = remainingData < send_size ? remainingData : send_size;
 
-        if (rudp_send(data + send_index, currentSendSize) != -1) {
+        if (rudp_send(session, data + send_index, currentSendSize) != -1) {
             send_index += currentSendSize;
             printf("Sent %d of %ld bytes | %.2f%%\n", send_index, fileSize, ((float)send_index / (float)fileSize) * 100);
             if (send_index == fileSize) {
@@ -59,8 +62,8 @@ int main() {
             }
         }
     }
-    while (rudp_get_state() != CLOSED) {
-        rudp_run();
+    while (rudp_get_state(session) != CLOSED) {
+        rudp_run(session);
     }
 
     free(data);
