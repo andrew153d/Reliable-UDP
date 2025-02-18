@@ -8,31 +8,10 @@ void receive_packets( struct rudp_session* session);
 void send_packets(struct rudp_session* session);
 void send_ack(struct rudp_session* session, struct DataPacket out_packet);
 
-
-
-// /* Variables */
-// uint16_t local_port;
-// char *local_ip;
-// struct sockaddr_in local_endpoint;
-// struct sockaddr_in remote_endpoint;
-// int udp_socket;
-
-// bool incoming_num_initialized = false;
-// uint32_t incoming_data_index = 0;
-// uint32_t next_outgoing_index = 0;
-
-// uint32_t last_ping_receive_time;
-// uint32_t last_ping_send_time;
-
-// struct timeval start_time;
-
-// SessionState sessionState;
-// void (*OnBytesReceived)(uint8_t *, int) = NULL;
-
-// struct Queue packets;
 struct timeval start_time;
-void rudp_init(struct rudp_session* session, const char *ip, int port)
+struct rudp_session * rudp_init(struct rudp_session* session, const char *ip, int port)
 {
+    session = (struct rudp_session*)malloc(sizeof(struct rudp_session));
     gettimeofday(&start_time, NULL);
     session->local_ip = (char *)malloc(strlen(ip) + 1);
     if (session->local_ip != NULL)
@@ -71,8 +50,9 @@ void rudp_init(struct rudp_session* session, const char *ip, int port)
 
     srand(time(NULL));
     session->next_outgoing_index = abs(rand() % 1000);
-
-    queue_init(&session->packets);
+    session->buffer = malloc(MAX_QUEUE_SIZE * sizeof(void*));
+    session->packets = circular_buf_init(session->buffer, MAX_QUEUE_SIZE);
+    return session;
 }
 
 SessionState rudp_get_state(struct rudp_session* session)
@@ -120,7 +100,7 @@ int rudp_send(struct rudp_session* session, uint8_t *bytes, int byte_len)
         return -1;
     }
 
-    if (queue_size(&session->packets) >= MAX_QUEUE_SIZE - 1)
+    if (circular_buf_full(session->packets))
     {
         // printf("Queue is full\n");
         return -1;
@@ -132,15 +112,16 @@ int rudp_send(struct rudp_session* session, uint8_t *bytes, int byte_len)
     p.header.PayloadSize = byte_len;
     memcpy(p.Data, bytes, byte_len);
 
-    if (queue_size(&session->packets) > 0)
+    if (!circular_buf_empty(session->packets))
     {
-        struct MessageFrame *last = (struct MessageFrame *)queue_last(&session->packets);
-        if (last == NULL)
-        {
-            printf("Error getting last packet\n");
-            return -1;
-        }
-        p.header.num = last->packet.header.num + 2;
+        // struct MessageFrame *last = (struct MessageFrame *)queue_last(&session->packets);
+        // if (last == NULL)
+        // {
+        //     printf("Error getting last packet\n");
+        //     return -1;
+        // }
+        // p.header.num = last->packet.header.num + 2;
+        p.header.num = session->next_outgoing_index + 2;
     }
     else
     {
@@ -158,7 +139,9 @@ void send_packet(struct rudp_session* session, struct DataPacket *packet)
     f->times_sent = 0;
     f->last_time_sent = 0;
     f->ep = session->remote_endpoint;
-    queue_write(&session->packets, f);
+
+    circular_buf_put(session->packets, (void**)&f);
+    //queue_write(&session->packets, f);
 }
 
 void send_ack(struct rudp_session* session, struct DataPacket out_packet)
@@ -262,12 +245,12 @@ void receive_packets(struct rudp_session* session)
 
     case ACK:
     {
-        if (queue_size(&session->packets) == 0)
+        if (circular_buf_empty(session->packets))
         {
             return;
         }
-        struct MessageFrame *thisPacket = (struct MessageFrame *)queue_peek(&session->packets);
-        if (thisPacket == NULL)
+        struct MessageFrame *thisPacket;// = (struct MessageFrame *)queue_peek(&session->packets);
+        if (circular_buf_peek(session->packets, (void**)&thisPacket, 0))
         {
             printf("Error getting first packet\n");
             return;
@@ -281,7 +264,8 @@ void receive_packets(struct rudp_session* session)
 
             session->next_outgoing_index = receivedPacket->header.num + 1;
 
-            thisPacket = queue_read(&session->packets);
+            //thisPacket = queue_read(&session->packets);
+            circular_buf_get(session->packets, (void**)&thisPacket);
         }
         break;
     }
@@ -320,12 +304,13 @@ void send_packets(struct rudp_session* session)
         }
     }
 
-    if (queue_size(&session->packets) == 0)
+    if (circular_buf_empty(session->packets))
     {
         return;
     }
-    struct MessageFrame *thisPacket = (struct MessageFrame *)queue_peek(&session->packets);
-    if (thisPacket == NULL)
+    struct MessageFrame *thisPacket;/// = (struct MessageFrame *)queue_peek(&session->packets);
+    
+    if (circular_buf_peek(session->packets, (void**)&thisPacket, 0))
     {
         printf("Error getting first packet\n");
         return;

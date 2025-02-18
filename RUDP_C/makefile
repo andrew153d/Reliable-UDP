@@ -1,13 +1,13 @@
 CC = gcc
 CFLAGS = -Wall -Wextra -g
 
-SERVER_SRCS = server.c rudp.c queue.c
-CLIENT_SRCS = client.c rudp.c queue.c
+SERVER_SRCS = server.c rudp.c circ_buf.c
+CLIENT_SRCS = client.c rudp.c circ_buf.c
 
 SERVER_OBJS = $(SERVER_SRCS:.c=.o)
 CLIENT_OBJS = $(CLIENT_SRCS:.c=.o)
 
-HEADERS = rudp.h queue.h
+HEADERS = rudp.h circ_buf.h
 
 SERVER_TARGET = server
 CLIENT_TARGET = client

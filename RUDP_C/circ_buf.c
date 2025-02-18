@@ -3,18 +3,17 @@
 #include <stddef.h>
 #include <assert.h>
 
-#include "queue.h"
+#include "circ_buf.h"
 
 // The definition of our circular buffer structure is hidden from the user
 struct circular_buf_t
 {
-	uint8_t* buffer;
+	BUFFER_TYPE* buffer;
 	size_t head;
 	size_t tail;
-	size_t max; // of the buffer
+	size_t max;
 	bool full;
 };
-
 
 static inline size_t advance_headtail_value(size_t value, size_t max)
 {
@@ -35,7 +34,7 @@ static void advance_head_pointer(cbuf_handle_t me)
 }
 
 
-cbuf_handle_t circular_buf_init(uint8_t* buffer, size_t size)
+cbuf_handle_t circular_buf_init(BUFFER_TYPE* buffer, size_t size)
 {
 	assert(buffer && size);
 
@@ -94,7 +93,7 @@ size_t circular_buf_capacity(cbuf_handle_t me)
 	return me->max;
 }
 
-void circular_buf_put(cbuf_handle_t me, uint8_t data)
+void circular_buf_put(cbuf_handle_t me, BUFFER_TYPE data)
 {
 	assert(me && me->buffer);
 
@@ -103,7 +102,7 @@ void circular_buf_put(cbuf_handle_t me, uint8_t data)
 	advance_head_pointer(me);
 }
 
-int circular_buf_try_put(cbuf_handle_t me, uint8_t data)
+int circular_buf_try_put(cbuf_handle_t me, BUFFER_TYPE data)
 {
 	int r = -1;
 
@@ -119,7 +118,7 @@ int circular_buf_try_put(cbuf_handle_t me, uint8_t data)
 	return r;
 }
 
-int circular_buf_get(cbuf_handle_t me, uint8_t* data)
+int circular_buf_get(cbuf_handle_t me, BUFFER_TYPE* data)
 {
 	assert(me && data && me->buffer);
 
@@ -150,7 +149,7 @@ bool circular_buf_full(cbuf_handle_t me)
 	return me->full;
 }
 
-int circular_buf_peek(cbuf_handle_t me, uint8_t* data, unsigned int look_ahead_counter)
+int circular_buf_peek(cbuf_handle_t me, BUFFER_TYPE* data, unsigned int look_ahead_counter)
 {
 	int r = -1;
 	size_t pos;

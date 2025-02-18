@@ -8,7 +8,7 @@
 #include <stdbool.h>
 #include <sys/time.h>
 #include <time.h>
-#include "queue.h"
+#include "circ_buf.h"
 
 #define PAYLOADSIZE 1100
 #define MAX_QUEUE_SIZE 10
@@ -73,10 +73,11 @@ struct rudp_session
     uint32_t last_ping_send_time;
     SessionState sessionState;
     void (*OnBytesReceived)(uint8_t *, int);
-    struct Queue packets;
+    void** buffer;
+    cbuf_handle_t packets;
 };
 
-void rudp_init(struct rudp_session* session, const char *ip, int port);
+struct rudp_session * rudp_init(struct rudp_session* session, const char *ip, int port);
 void rudp_connect(struct rudp_session* session,char *remote_ip, uint16_t remote_port);
 int rudp_send(struct rudp_session* session,uint8_t* bytes, int byte_len);
 SessionState rudp_get_state(struct rudp_session* session);
