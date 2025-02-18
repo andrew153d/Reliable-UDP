@@ -14,7 +14,6 @@ void HandleReceivedBytes(const unsigned char *bytes, size_t length)
 }
 
 
-#define  EXAMPLE_BUFFER_SIZE 5
 int main()
 {
 
@@ -35,7 +34,7 @@ int main()
     // printf("Read %d from buffer", *readdata);
     // free(readdata);
 
-    // return 0;
+    //return 0;
 
     printf("Starting the Client\n");
 
@@ -63,19 +62,26 @@ int main()
     fclose(file);
 
     int send_index = 0;
+    printf("Startign\n");
     struct rudp_session *session = rudp_init(session, "127.0.0.1", 15680);
+    if(session == NULL)
+    {
+        printf("Failed");
+    }
+
     rudp_connect(session, "127.0.0.1", 15671);
+    
     while (session->sessionState != OPEN)
     {
         rudp_run(session);
     }
-    int send_size = 1000;
+    int send_size = 500;
 
     while (rudp_get_state(session) != CLOSED)
     {
         rudp_run(session);
 
-        // Send the data in chunks of 'send_size', adjusting to ensure you send the remaining data
+        //Send the data in chunks of 'send_size', adjusting to ensure you send the remaining data
         int remainingData = fileSize - send_index;
         int currentSendSize = remainingData < send_size ? remainingData : send_size;
 

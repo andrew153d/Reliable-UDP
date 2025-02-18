@@ -1,173 +1,99 @@
+#include <stdio.h>
 #include <stdlib.h>
-#include <stdint.h>
-#include <stddef.h>
-#include <assert.h>
-
+#include <string.h>
 #include "circ_buf.h"
 
-// The definition of our circular buffer structure is hidden from the user
-struct circular_buf_t
+void ringbuf_init(rbuf_t* _this)
 {
-	BUFFER_TYPE* buffer;
-	size_t head;
-	size_t tail;
-	size_t max;
-	bool full;
-};
-
-static inline size_t advance_headtail_value(size_t value, size_t max)
-{
-	return (value + 1) % max;
+  // clear the _thisfer and init the values
+  // and sets head = tail in one go
+  memset( _this, 0, sizeof(*_this) );
 }
 
-static void advance_head_pointer(cbuf_handle_t me)
+bool ringbuf_empty(rbuf_t* _this)
 {
-	assert(me);
-
-	if(circular_buf_full(me))
-	{
-		me->tail = advance_headtail_value(me->tail, me->max);
-	}
-
-	me->head = advance_headtail_value(me->head, me->max);
-	me->full = (me->head == me->tail);
+  // test if the queue is empty
+  // 0 returns true
+  // nonzero false
+  return (0 == _this->count);
 }
 
-
-cbuf_handle_t circular_buf_init(BUFFER_TYPE* buffer, size_t size)
+bool ringbuf_full(rbuf_t* _this)
 {
-	assert(buffer && size);
-
-	cbuf_handle_t cbuf = malloc(sizeof(circular_buf_t));
-	assert(cbuf);
-
-	cbuf->buffer = buffer;
-	cbuf->max = size;
-	circular_buf_reset(cbuf);
-
-	assert(circular_buf_empty(cbuf));
-
-	return cbuf;
+  // full when no of elements exceed the max size
+  return (_this->count >= RBUF_SIZE);
 }
 
-void circular_buf_free(cbuf_handle_t me)
+MessageFrame ringbuf_get(rbuf_t* _this)
 {
-	assert(me);
-	free(me);
+  MessageFrame item;
+  if (_this->count > 0)
+  {
+    // get item element
+    item        = _this->buf[_this->tail];
+    // advance the tail
+    _this->tail = ringbuf_adv(_this->tail, RBUF_SIZE);
+    // reduce the total count
+    --_this->count;
+  }
+  else {
+    // the queue is empty
+    //item = RBUF_EMPTY;
+  }
+  return item;
 }
 
-void circular_buf_reset(cbuf_handle_t me)
+void ringbuf_put(rbuf_t* _this, MessageFrame item)
 {
-	assert(me);
-
-	me->head = 0;
-	me->tail = 0;
-	me->full = false;
+  if (_this->count < RBUF_SIZE)
+  {
+    // set the item at head position
+    _this->buf[_this->head] = item;
+    // advance the head
+    _this->head = ringbuf_adv(_this->head, RBUF_SIZE);
+    // increase the total count
+    ++_this->count;
+  }
 }
 
-size_t circular_buf_size(cbuf_handle_t me)
+MessageFrame* ringbuf_peek(rbuf_t* _this)
 {
-	assert(me);
-
-	size_t size = me->max;
-
-	if(!circular_buf_full(me))
-	{
-		if(me->head >= me->tail)
-		{
-			size = (me->head - me->tail);
-		}
-		else
-		{
-			size = (me->max + me->head - me->tail);
-		}
-	}
-
-	return size;
+  if (_this->count != 0)
+  {
+	return &_this->buf[_this->tail];
+  
+  }
+  return NULL;
 }
 
-size_t circular_buf_capacity(cbuf_handle_t me)
+void ringbuf_print(rbuf_t* _this)
 {
-	assert(me);
-
-	return me->max;
+  for (int i = 0; i < RBUF_SIZE; i++)
+  {
+    printf("%d ", _this->buf[i]);
+  }
+  printf("\n");
 }
 
-void circular_buf_put(cbuf_handle_t me, BUFFER_TYPE data)
+void ringbuf_flush(rbuf_t* _this, rbuf_opt_e clear)
 {
-	assert(me && me->buffer);
+  _this->count = 0;
+  _this->head  = 0;
+  _this->tail  = 0;
 
-	me->buffer[me->head] = data;
-
-	advance_head_pointer(me);
+  // optionally clear
+  if (RBUF_CLEAR == clear)
+  {
+    memset(_this->buf, 0, sizeof(_this->buf));
+  }
 }
 
-int circular_buf_try_put(cbuf_handle_t me, BUFFER_TYPE data)
+static unsigned int ringbuf_adv(const unsigned int value, const unsigned int max)
 {
-	int r = -1;
-
-	assert(me && me->buffer);
-
-	if(!circular_buf_full(me))
-	{
-		me->buffer[me->head] = data;
-		advance_head_pointer(me);
-		r = 0;
-	}
-
-	return r;
-}
-
-int circular_buf_get(cbuf_handle_t me, BUFFER_TYPE* data)
-{
-	assert(me && data && me->buffer);
-
-	int r = -1;
-
-	if(!circular_buf_empty(me))
-	{
-		*data = me->buffer[me->tail];
-		me->tail = advance_headtail_value(me->tail, me->max);
-		me->full = false;
-		r = 0;
-	}
-
-	return r;
-}
-
-bool circular_buf_empty(cbuf_handle_t me)
-{
-	assert(me);
-
-	return (!circular_buf_full(me) && (me->head == me->tail));
-}
-
-bool circular_buf_full(cbuf_handle_t me)
-{
-	assert(me);
-
-	return me->full;
-}
-
-int circular_buf_peek(cbuf_handle_t me, BUFFER_TYPE* data, unsigned int look_ahead_counter)
-{
-	int r = -1;
-	size_t pos;
-
-	assert(me && data && me->buffer);
-
-	// We can't look beyond the current buffer size
-	if(circular_buf_empty(me) || look_ahead_counter > circular_buf_size(me))
-	{
-		return r;
-	}
-
-	pos = me->tail;
-	for(unsigned int i = 0; i < look_ahead_counter; i++)
-	{
-		data[i] = me->buffer[pos];
-		pos = advance_headtail_value(pos, me->max);
-	}
-
-	return 0;
+  unsigned int index = value + 1;
+  if (index >= max)
+  {
+    index = 0;
+  }
+  return index;
 }

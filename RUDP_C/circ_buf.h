@@ -1,78 +1,50 @@
-#ifndef CIRCULAR_BUFFER_H_
-#define CIRCULAR_BUFFER_H_
+#ifndef RING_BUF_H
+#define RING_BUF_H
 
 #include <stdbool.h>
-#include <stdint.h>
+#include "defines.h"
 
-#define BUFFER_TYPE void*
+// ring buffer options
+typedef enum
+{
+  RBUF_CLEAR,
+  RBUF_NO_CLEAR
+} rbuf_opt_e;
 
-/// Opaque circular buffer structure
-typedef struct circular_buf_t circular_buf_t;
+// buffer messages
+typedef enum
+{
+  RBUF_EMPTY = -1,
+  RBUF_FULL
+} rbuf_msg_e;
 
-/// Handle type, the way users interact with the API
-typedef circular_buf_t* cbuf_handle_t;
+// API
 
-/// Pass in a storage buffer and size, returns a circular buffer handle
-/// Requires: buffer is not NULL, size > 0 (size > 1 for the threadsafe
-//  version, because it holds size - 1 elements)
-/// Ensures: me has been created and is returned in an empty state
-cbuf_handle_t circular_buf_init(BUFFER_TYPE* buffer, size_t size);
+  // initialise the queue
+  void ringbuf_init(rbuf_t* _this);
 
-/// Free a circular buffer structure
-/// Requires: me is valid and created by circular_buf_init
-/// Does not free data buffer; owner is responsible for that
-void circular_buf_free(cbuf_handle_t me);
+  // determine if the queue is empty
+  bool ringbuf_empty(rbuf_t* _this);
 
-/// Reset the circular buffer to empty, head == tail. Data not cleared
-/// Requires: me is valid and created by circular_buf_init
-void circular_buf_reset(cbuf_handle_t me);
+  // determine if the queue is full
+  bool ringbuf_full(rbuf_t* _this);
 
-/// Put that continues to add data if the buffer is full
-/// Old data is overwritten
-/// Note: if you are using the threadsafe version, this API cannot be used, because
-/// it modifies the tail pointer in some cases. Use circular_buf_try_put instead.
-/// Requires: me is valid and created by circular_buf_init
-void circular_buf_put(cbuf_handle_t me, BUFFER_TYPE data);
+  // fetch a byte from the queue at tail
+  MessageFrame ringbuf_get(rbuf_t* _this);
 
-/// Put that rejects new data if the buffer is full
-/// Note: if you are using the threadsafe version, *this* is the put you should use
-/// Requires: me is valid and created by circular_buf_init
-/// Returns 0 on success, -1 if buffer is full
-int circular_buf_try_put(cbuf_handle_t me, BUFFER_TYPE data);
+  // insert a byte to the queue at head
+  void ringbuf_put(rbuf_t* _this, MessageFrame item);
 
-/// Retrieve a value from the buffer
-/// Requires: me is valid and created by circular_buf_init
-/// Returns 0 on success, -1 if the buffer is empty
-int circular_buf_get(cbuf_handle_t me, BUFFER_TYPE* data);
+  // peek at the first element in the queue
+  MessageFrame* ringbuf_peek(rbuf_t* _this);
 
-/// CHecks if the buffer is empty
-/// Requires: me is valid and created by circular_buf_init
-/// Returns true if the buffer is empty
-bool circular_buf_empty(cbuf_handle_t me);
+  // flush the queue and clear the buffer
+  void ringbuf_flush(rbuf_t* _this, rbuf_opt_e clear);
 
-/// Checks if the buffer is full
-/// Requires: me is valid and created by circular_buf_init
-/// Returns true if the buffer is full
-bool circular_buf_full(cbuf_handle_t me);
+  // print the contents
+  void ringbuf_print(rbuf_t* _this);
 
-/// Check the capacity of the buffer
-/// Requires: me is valid and created by circular_buf_init
-/// Returns the maximum capacity of the buffer
-size_t circular_buf_capacity(cbuf_handle_t me);
+  // advance the ring buffer index
+  static unsigned int ringbuf_adv (const unsigned int value, const unsigned int max_val);
 
-/// Check the number of elements stored in the buffer
-/// Requires: me is valid and created by circular_buf_init
-/// Returns the current number of elements in the buffer
-size_t circular_buf_size(cbuf_handle_t me);
-
-/// Look ahead at values stored in the circular buffer without removing the data
-/// Requires:
-///		- me is valid and created by circular_buf_init
-///		- look_ahead_counter is less than or equal to the value returned by circular_buf_size()
-/// Returns 0 if successful, -1 if data is not available
-int circular_buf_peek(cbuf_handle_t me, BUFFER_TYPE* data, unsigned int look_ahead_counter);
-
-// TODO: int circular_buf_get_range(circular_buf_t me, uint8_t *data, size_t len);
-// TODO: int circular_buf_put_range(circular_buf_t me, uint8_t * data, size_t len);
-
-#endif // CIRCULAR_BUFFER_H_
+#endif

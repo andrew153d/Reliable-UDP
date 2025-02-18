@@ -20,9 +20,7 @@ int main() {
         fclose(file);
     }
 
-    session = (struct rudp_session*)malloc(sizeof(struct rudp_session));
-
-    rudp_init(session, "127.0.0.1", 15671);
+    session = rudp_init(session, "127.0.0.1", 15671);
     set_recv_callback(session, HandleReceivedBytes);
     while(rudp_get_state(session)!=OPEN)
     {
