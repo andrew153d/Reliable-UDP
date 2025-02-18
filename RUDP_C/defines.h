@@ -11,6 +11,11 @@
 
 #define PAYLOADSIZE 1000
 #define RBUF_SIZE 8
+#define MAX_QUEUE_SIZE 10
+#define MAX_SEND_RETRIES 10
+#define PACKET_RESEND_TIMEOUT 1000
+#define PING_PERIOD 1000
+#define ENABLE_PING 0
 
 typedef enum
 {
@@ -30,15 +35,15 @@ typedef enum
     PING
 } MessageType;
 
-struct PacketHeader
+struct __attribute__((__packed__)) PacketHeader
 {
-    MessageType type;
+    uint8_t type;
     uint16_t PayloadSize;
     uint16_t checksum;
     uint32_t num;
 };
 
-struct DataPacket
+struct __attribute__((__packed__)) DataPacket
 {
     struct PacketHeader header;
     uint8_t Data[PAYLOADSIZE];

@@ -199,15 +199,17 @@ void receive_packets(struct rudp_session* session)
     if (recv_len < 0)
     {
         return;
-    }
-
+    }    
     struct DataPacket *receivedPacket = (struct DataPacket *)&buffer[0];
+    // printf("Sizeof(%d), %d\n", sizeof(struct PacketHeader), recv_len); 
+    // printf("Received packet Type:%d, PayloadSize:%d, Checksum:%d, Num:%d\n", receivedPacket->header.type, receivedPacket->header.PayloadSize, receivedPacket->header.checksum, receivedPacket->header.num);
 
+    // return;
     uint16_t receivedChecksum = calculate_checksum(receivedPacket->Data, receivedPacket->header.PayloadSize);
     if (receivedChecksum != receivedPacket->header.checksum)
     {
         printf("Checksum mismatch: %d | %d\n", receivedChecksum, receivedPacket->header.checksum);
-        // return;
+        return;
     }
 
     printf("Received: %d:%d\n", receivedPacket->header.type, receivedPacket->header.num);
@@ -351,7 +353,7 @@ void send_packets(struct rudp_session* session)
     
     if ((millis() - thisPacket->last_time_sent) > PACKET_RESEND_TIMEOUT || thisPacket->times_sent==0)
     {
-        printf("Millis: %ld | Last time: %ld\n", millis(), thisPacket->last_time_sent);
+        //printf("Millis: %ld | Last time: %ld\n", millis(), thisPacket->last_time_sent);
         thisPacket->times_sent++;
         thisPacket->last_time_sent = millis();
         printf("Sending: %d:%d\n", thisPacket->packet.header.type, thisPacket->packet.header.num);
@@ -361,14 +363,16 @@ void send_packets(struct rudp_session* session)
 
 uint16_t calculate_checksum(uint8_t *bytes, int byte_len)
 {
-    if (bytes == NULL)
+    if (bytes == NULL || byte_len == 0)
         return 0;
-
+    //printf("Calculating Checksum on %d bytes\n", byte_len);
     uint16_t checksum = 0;
     for (int i = 0; i < byte_len; i++)
     {
+        //printf(" 0x%x", bytes[i]);
         checksum += bytes[i];
     }
+    //printf(" \n");
     return checksum;
 }
 
