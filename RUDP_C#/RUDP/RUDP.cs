@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using System.Linq;
 using System.Net;
@@ -13,11 +13,12 @@ namespace RUDP
 {
     public class RUDP
     {
-        const int PAYLOADSIZE = 1100;
+        const int PAYLOADSIZE = 1000;
         const int MAX_QUEUE_SIZE = 10;
         const int MAX_SEND_RETRIES = 20;
-        const int PACKET_RESEND_TIMEOUT = 500;
+        const int PACKET_RESEND_TIMEOUT = 1000;
         const int PING_PERIIOD = 1000;
+        const int ENABLE_PING = 0;
 
         private short local_port;
         private IPAddress local_addr;
@@ -25,8 +26,8 @@ namespace RUDP
         IPEndPoint remote_ep;
         
         private bool incoming_num_initialized = false;
-        private uint incoming_data_index = 0;
-        private int next_outgoing_data_index = 0;
+        private UInt32 incoming_data_index = 0;
+        private UInt32 next_outgoing_data_index = 0;
 
         private long last_ping_receive_time;
         private long last_ping_send_time;
@@ -42,9 +43,9 @@ namespace RUDP
         public unsafe struct PacketHeader
         {
             public MessageType type;
-            public int PayloadSize;
+            public ushort PayloadSize;
             public ushort checksum;
-            public int num;
+            public UInt32 num;
         }
 
         [StructLayout(LayoutKind.Sequential, Pack = 1)]
@@ -53,7 +54,7 @@ namespace RUDP
             public PacketHeader header;
             public byte[] Data;
 
-            public DataPacket(int payloadSize)
+            public DataPacket(ushort payloadSize)
             {
                 header.PayloadSize = payloadSize;
                 Data = new byte[header.PayloadSize];
@@ -69,7 +70,7 @@ namespace RUDP
             public long last_time_sent;
         }
 
-        public enum MessageType : short
+        public enum MessageType : byte
         {
             SYN,
             ACK,
@@ -95,7 +96,7 @@ namespace RUDP
             client = new UdpClient(new IPEndPoint(addr, local_port));
             Console.WriteLine($"{addr}:{local_port}");
             sessionState = SessionState.CLOSED;
-            next_outgoing_data_index = new Random().Next(1, 1000);
+            next_outgoing_data_index = (UInt32)new Random().Next(1, 1000);
         }
 
         public SessionState GetState()
@@ -120,7 +121,7 @@ namespace RUDP
                     num = next_outgoing_data_index
                 }
             };
-
+            next_outgoing_data_index = next_outgoing_data_index + 1;
             SendPacket(packet, new IPEndPoint(remote_addr, remote_port));
 
             return true;
@@ -143,39 +144,35 @@ namespace RUDP
                 //Console.WriteLine("Queue too big");
                 return -1;
             }
-            DataPacket p = new DataPacket(bytes.Length)
+            DataPacket p = new DataPacket((ushort)bytes.Length)
             {
                 header =
                 {
-                    type = MessageType.DATA
+                    type = MessageType.DATA,
+                    num =  next_outgoing_data_index,
                 },
                 Data = bytes,
             };
 
             MessageFrame f;
-            if (packets.Count > 0) {
-                p.header.num = packets.Last<MessageFrame>().packet.header.num+2;
-            }
-            else
-            {
-                p.header.num = next_outgoing_data_index;
-            }
+    
             p.header.checksum = CalculateChecksum(p.Data);
-            packets.AddLast(new MessageFrame
-            {
-                packet = p,
-                last_time_sent = 0,
-                ep = remote_ep,
-            });
+            next_outgoing_data_index = next_outgoing_data_index + 1;
+            SendPacket(p, remote_ep);
+
             return 0;
         }
-
+        public int Send(byte[] bytes, int offset, int byte_len)
+        {
+            byte[] toSend = new byte[byte_len];
+            Array.Copy(bytes, offset, toSend, 0, byte_len);
+            return Send(toSend, byte_len);
+        }
         private void SendPacket(DataPacket out_packet, IPEndPoint ep_)
         {
             packets.AddLast(new MessageFrame
             {
                 packet = out_packet,
-                acked = false,
                 last_time_sent = 0,
                 ep = ep_
             });
@@ -209,6 +206,8 @@ namespace RUDP
             
             try
             {
+                if (client.Client == null)
+                    return;
                 IPEndPoint remoteEndPoint = new IPEndPoint(IPAddress.Any, 0);
                 client.Client.ReceiveTimeout = 100;
                 byte[] receivedBytes = client.Receive(ref remoteEndPoint);
@@ -301,11 +300,8 @@ namespace RUDP
                                 {
                                     sessionState = SessionState.OPEN;
                                 }
-                                next_outgoing_data_index = receivedPacket.header.num + 1;
                                 packets.RemoveFirst();
                             }
-                            //Console.WriteLine(" got an ack for ");
-                            //pop the message from the message frame here
                             break;
                         }
                     case MessageType.PING:
@@ -324,26 +320,28 @@ namespace RUDP
 
         private void Sender()
         {
-            
-            if (millis() - last_ping_send_time > PING_PERIIOD && GetState()==SessionState.OPEN)
+            if (ENABLE_PING==1)
             {
-                last_ping_send_time = millis();
-                Console.WriteLine($"Sending: PING");
-                DataPacket packet = new DataPacket(0);
-                packet.header.PayloadSize = 0;
-                packet.header.num = 0;
-                packet.header.type = MessageType.PING;
-                packet.header.checksum = CalculateChecksum(packet.Data);
-                ReadOnlyMemory<byte> serializedData = SerializeToSpan(packet);
-                client.Send(serializedData.ToArray(), serializedData.Length, remote_ep);
-            }
+                if (millis() - last_ping_send_time > PING_PERIIOD && GetState() == SessionState.OPEN)
+                {
+                    last_ping_send_time = millis();
+                    Console.WriteLine($"Sending: PING");
+                    DataPacket packet = new DataPacket(0);
+                    packet.header.PayloadSize = 0;
+                    packet.header.num = 0;
+                    packet.header.type = MessageType.PING;
+                    packet.header.checksum = CalculateChecksum(packet.Data);
+                    ReadOnlyMemory<byte> serializedData = SerializeToSpan(packet);
+                    client.Send(serializedData.ToArray(), serializedData.Length, remote_ep);
+                }
 
-            if (millis() - last_ping_receive_time > PING_PERIIOD*3 && GetState() == SessionState.OPEN)
-            {
-                last_ping_send_time = millis();
-                Console.WriteLine("Lost Comms");
-                Close();
-                return;
+                if (millis() - last_ping_receive_time > PING_PERIIOD * 3 && GetState() == SessionState.OPEN)
+                {
+                    last_ping_send_time = millis();
+                    Console.WriteLine("Lost Comms");
+                    Close();
+                    return;
+                }
             }
 
             if (packets.Count == 0)
@@ -362,7 +360,7 @@ namespace RUDP
             {
                 thisPacket.times_sent++;
                 thisPacket.last_time_sent = millis();
-                Console.WriteLine($"Sending: {thisPacket.packet.header.type}:{thisPacket.packet.header.num}");
+                Console.WriteLine($"Sending: {thisPacket.packet.header.type}:{thisPacket.packet.header.num}:{thisPacket.packet.header.checksum}");
                 ReadOnlyMemory<byte> serializedData = SerializeToSpan(thisPacket.packet);
                 client.Send(serializedData.ToArray(), serializedData.Length, (IPEndPoint?)thisPacket.ep);
             }
@@ -387,7 +385,7 @@ namespace RUDP
             Array.Copy(byteArray, headerSize, dataBytes, 0, dataSize);
 
             // Create a DataPacket struct and assign the deserialized values
-            DataPacket dataPacket = new DataPacket(dataSize)
+            DataPacket dataPacket = new DataPacket((ushort)dataSize)
             {
                 header = header,
                 Data = dataBytes
@@ -446,13 +444,14 @@ namespace RUDP
             if (data == null || data.Length == 0)
                 return 0;
 
-            int sum = 0;
+            ushort sum = 0;
             foreach (byte b in data)
             {
+                
                 sum += b;
             }
 
-            return (ushort)(sum % 256);
+            return (ushort)(sum%0xFFFF);
         }
 
 
