@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.IO;
 using System.Net;
 using RUDP;
@@ -15,7 +15,7 @@ static void HandleReceivedBytes(byte[] bytes)
 Console.WriteLine("Starting the Client");
 
 // Adjust these values based on needs
-int send_size = 1099;   // Size of each packet to send
+int send_size = 900;   // Size of each packet to send
 
 // Read the firmware file into a byte array
 string filePath = "firmware.txt";
@@ -23,15 +23,15 @@ byte[] data = File.ReadAllBytes(filePath);
 
 int send_index = 0;
 
-RUDP.RUDP p = new RUDP.RUDP(IPAddress.Loopback, 15680);
-p.Connect(IPAddress.Loopback, 15671);
+RUDP.RUDP p = new RUDP.RUDP(IPAddress.Parse("100.81.167.126"), 15680);
+p.Connect(IPAddress.Parse("100.91.81.117"), 15671);
 p.OnBytesReceived += HandleReceivedBytes;
 // Wait for the connection to be open
 while (p.GetState() != RUDP.RUDP.SessionState.OPEN)
 {
     p.Run();
 }
-
+Console.WriteLine("running");
 while (p.GetState() != RUDP.RUDP.SessionState.CLOSED)
 {
     p.Run();
