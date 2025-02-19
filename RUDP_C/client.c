@@ -14,6 +14,8 @@ void HandleReceivedBytes(const unsigned char *bytes, size_t length)
 }
 
 
+struct rudp_session *session;
+
 int main()
 {
 
@@ -63,7 +65,7 @@ int main()
 
     int send_index = 0;
     printf("Startign\n");
-    struct rudp_session *session = rudp_init(session, "100.91.81.117", 15680);
+    rudp_init(session, "100.91.81.117", 15680);
     if(session == NULL)
     {
         printf("Failed");
