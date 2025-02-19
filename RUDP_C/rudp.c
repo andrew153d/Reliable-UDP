@@ -1,4 +1,5 @@
 #include "rudp.h"
+#include "circ_buf.h"
 
 uint16_t calculate_checksum(uint8_t *bytes, int byte_len);
 uint32_t millis();
@@ -210,9 +211,9 @@ void receive_packets(struct rudp_session* session)
     uint16_t receivedChecksum = calculate_checksum(receivedPacket->Data, receivedPacket->header.PayloadSize);
     if (receivedChecksum != receivedPacket->header.checksum)
     {
-        printf("Sizeof(%d), %d\n", sizeof(struct PacketHeader), recv_len); 
-        printf("Received packet Type:%d, PayloadSize:%d, Checksum:%d, Num:%d\n", receivedPacket->header.type, receivedPacket->header.PayloadSize, receivedPacket->header.checksum, receivedPacket->header.num);
-        printf("Checksum mismatch: %d | %d\n", receivedChecksum, receivedPacket->header.checksum);
+        ///printf("Sizeof(%d), %d\n", sizeof(struct PacketHeader), recv_len); 
+        //printf("Received packet Type:%d, PayloadSize:%d, Checksum:%d, Num:%d\n", receivedPacket->header.type, receivedPacket->header.PayloadSize, receivedPacket->header.checksum, receivedPacket->header.num);
+        //printf("Checksum mismatch: %d | %d\n", receivedChecksum, receivedPacket->header.checksum);
         return;
     }
 

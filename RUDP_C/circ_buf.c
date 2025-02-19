@@ -66,15 +66,6 @@ MessageFrame* ringbuf_peek(rbuf_t* _this)
   return NULL;
 }
 
-void ringbuf_print(rbuf_t* _this)
-{
-  for (int i = 0; i < RBUF_SIZE; i++)
-  {
-    printf("%d ", _this->buf[i]);
-  }
-  printf("\n");
-}
-
 void ringbuf_flush(rbuf_t* _this, rbuf_opt_e clear)
 {
   _this->count = 0;
@@ -88,7 +79,7 @@ void ringbuf_flush(rbuf_t* _this, rbuf_opt_e clear)
   }
 }
 
-static unsigned int ringbuf_adv(const unsigned int value, const unsigned int max)
+unsigned int ringbuf_adv(const unsigned int value, const unsigned int max)
 {
   unsigned int index = value + 1;
   if (index >= max)
