@@ -65,7 +65,7 @@ int main()
 
     int send_index = 0;
     printf("Startign\n");
-    rudp_init(session, "100.91.81.117", 15680);
+    session = rudp_init(session, "100.91.81.117", 15680);
     if(session == NULL)
     {
         printf("Failed");
