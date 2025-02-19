@@ -63,13 +63,13 @@ int main()
 
     int send_index = 0;
     printf("Startign\n");
-    struct rudp_session *session = rudp_init(session, "127.0.0.1", 15680);
+    struct rudp_session *session = rudp_init(session, "100.91.81.117", 15680);
     if(session == NULL)
     {
         printf("Failed");
     }
 
-    rudp_connect(session, "127.0.0.1", 15671);
+    rudp_connect(session, "100.91.81.117", 15671);
     
     while (session->sessionState != OPEN)
     {

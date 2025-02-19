@@ -3,6 +3,7 @@
 uint16_t calculate_checksum(uint8_t *bytes, int byte_len);
 uint32_t millis();
 time_t sec;
+
 void send_packet(struct rudp_session* session, struct DataPacket *packet);
 void receive_packets( struct rudp_session* session);
 void send_packets(struct rudp_session* session);
@@ -100,6 +101,7 @@ void rudp_connect(struct rudp_session* session, char *remote_ip, uint16_t remote
     packet.header.num = session->next_outgoing_index;
     session->next_outgoing_index=session->next_outgoing_index+2;
     packet.header.PayloadSize = 0;
+    packet.header.checksum = calculate_checksum(packet.Data, packet.header.PayloadSize);
     //printf("Sgending: %d:%d\n", packet.header.type, packet.header.num);
     send_packet(session, &packet);
 }
@@ -208,6 +210,8 @@ void receive_packets(struct rudp_session* session)
     uint16_t receivedChecksum = calculate_checksum(receivedPacket->Data, receivedPacket->header.PayloadSize);
     if (receivedChecksum != receivedPacket->header.checksum)
     {
+        printf("Sizeof(%d), %d\n", sizeof(struct PacketHeader), recv_len); 
+        printf("Received packet Type:%d, PayloadSize:%d, Checksum:%d, Num:%d\n", receivedPacket->header.type, receivedPacket->header.PayloadSize, receivedPacket->header.checksum, receivedPacket->header.num);
         printf("Checksum mismatch: %d | %d\n", receivedChecksum, receivedPacket->header.checksum);
         return;
     }
@@ -290,7 +294,7 @@ void receive_packets(struct rudp_session* session)
             }
 
             //session->next_outgoing_index = receivedPacket->header.num + 1;
-            printf("Removing from buffer: %d\n", thisPacket->packet.header.num);
+            //printf("Removing from buffer: %d\n", thisPacket->packet.header.num);
             (void)ringbuf_get(&session->packets);
         }
         break;
